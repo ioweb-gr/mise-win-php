@@ -63,7 +63,7 @@ function PLUGIN:BackendInstall(ctx)
     local ini = file.join_path(install_path, "php.ini")
     if file.exists(ini_dev) and not file.exists(ini) then
         local cmd = require("cmd")
-        cmd.exec("copy \"" .. ini_dev .. "\" \"" .. ini .. "\"")
+        cmd.exec("cmd /c copy \"" .. ini_dev .. "\" \"" .. ini .. "\"")
     end
 
     return {}
