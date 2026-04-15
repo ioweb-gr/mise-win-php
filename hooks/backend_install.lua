@@ -12,7 +12,7 @@ function PLUGIN:BackendInstall(ctx)
 
     -- Call the existing PowerShell install script
     -- We pass the required environment variables by setting them in the PowerShell command scope
-    local install_cmd = string.format("powershell -NoProfile -ExecutionPolicy Bypass -Command \"$env:ASDF_INSTALL_VERSION='%s'; $env:ASDF_INSTALL_PATH='%s'; & '%s'\"", ctx.version, ctx.install_path, ps1_path)
+    local install_cmd = string.format("powershell -NoProfile -ExecutionPolicy Bypass -Command \"$env:MISE_INSTALL_VERSION='%s'; $env:MISE_INSTALL_PATH='%s'; & '%s'\"", ctx.version, ctx.install_path, ps1_path)
     local result = cmd.exec(install_cmd)
 
     -- Check for failure in PowerShell output

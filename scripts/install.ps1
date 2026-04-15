@@ -1,8 +1,8 @@
 $ProgressPreference = 'SilentlyContinue'
 
 # Mise passes these via environment variables
-$Version = $env:ASDF_INSTALL_VERSION
-$Dest = $env:ASDF_INSTALL_PATH
+$Version = $env:MISE_INSTALL_VERSION
+$Dest = $env:MISE_INSTALL_PATH
 $BaseUrl = 'https://downloads.php.net/~windows/releases/'
 
 function Find-ZipFilename($Url) {
