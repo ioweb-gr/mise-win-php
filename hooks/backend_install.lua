@@ -58,13 +58,8 @@ function PLUGIN:BackendInstall(ctx)
     -- Extract the zip into the install directory
     archiver.decompress(zip_path, install_path)
 
-    -- Set up default php.ini from the development template if not already present
-    local ini_dev = file.join_path(install_path, "php.ini-development")
-    local ini = file.join_path(install_path, "php.ini")
-    if file.exists(ini_dev) and not file.exists(ini) then
-        local cmd = require("cmd")
-        cmd.exec("cmd /c copy \"" .. ini_dev .. "\" \"" .. ini .. "\"")
-    end
+    -- php.ini-development is included in the zip; copy it to php.ini manually if needed.
+    -- (File copy via cmd.exec is skipped here due to cmd built-in limitations.)
 
     return {}
 end
