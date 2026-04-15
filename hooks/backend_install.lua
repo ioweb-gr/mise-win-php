@@ -58,8 +58,57 @@ function PLUGIN:BackendInstall(ctx)
     -- Extract the zip into the install directory
     archiver.decompress(zip_path, install_path)
 
-    -- php.ini-development is included in the zip; copy it to php.ini manually if needed.
-    -- (File copy via cmd.exec is skipped here due to cmd built-in limitations.)
+    -- Set up php.ini with extensions enabled for Magento 2.
+    -- file.read is available but file.write is not in the mise Lua API, so we use
+    -- PowerShell to read, patch, and write the ini file entirely on the Windows side.
+    -- This avoids passing file content through command-line arguments.
+    local ini_dev = file.join_path(install_path, "php.ini-development")
+    local ini = file.join_path(install_path, "php.ini")
+    if file.exists(ini_dev) and not file.exists(ini) then
+        local cmd = require("cmd")
+
+        -- Extensions to enable for Magento 2 (covers PHP 7.x and 8.x naming).
+        -- gd2 = PHP 7.x name; gd = PHP 8.x name. Both are listed; only the
+        -- matching line in the ini file will be uncommented.
+        local extensions = {
+            "bcmath", "curl", "exif", "fileinfo",
+            "gd", "gd2", "gettext", "iconv", "intl",
+            "mbstring", "mysqli", "openssl", "pdo_mysql",
+            "soap", "sockets", "sodium", "xsl", "zip",
+        }
+
+        -- Build a .NET regex alternation group, e.g. "bcmath|curl|..."
+        local ext_pattern = table.concat(extensions, "|")
+
+        -- PowerShell reads ini-development, uncomments matching extension= lines,
+        -- and writes the result as php.ini.  Single-quoted PS strings are used
+        -- throughout so there is no conflict with the outer double-quote wrapping
+        -- required by -Command "...".
+        --
+        -- Regex explanation:
+        --   ^;(extension=(?:bcmath|curl|...))  — leading semicolon then capture group
+        --   Replacement: $1                     — drop the semicolon, keep the rest
+        --
+        -- opcache is a zend_extension, handled with a separate replace.
+        local ps_cmd = string.format(
+            "$c=Get-Content -LiteralPath '%s';" ..
+            "$c=$c -replace '^;(extension=(?:%s))','$1';" ..
+            "$c=$c -replace '^;(zend_extension=opcache)','$1';" ..
+            "$c=$c -replace '^;(zend_extension=php_opcache)','$1';" ..
+            "$c|Set-Content -LiteralPath '%s'",
+            ini_dev, ext_pattern, ini
+        )
+
+        local ok, err = pcall(function()
+            cmd.exec("powershell -NoProfile -ExecutionPolicy Bypass -Command \"" .. ps_cmd .. "\"")
+        end)
+
+        if not ok then
+            -- Non-fatal: PHP works with compiled-in defaults.
+            -- php.ini-development is in the install dir for manual setup.
+            print("Warning: could not create php.ini automatically: " .. tostring(err))
+        end
+    end
 
     return {}
 end
