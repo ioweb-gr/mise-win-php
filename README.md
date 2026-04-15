@@ -8,6 +8,10 @@ This plugin uses the enhanced [Mise Backend Architecture](https://mise.jdx.dev/b
 
 * **Windows OS**: Installation and execution is only supported on Windows.
 * **Mise**: Installed and configured on your system.
+* **Experimental Features**: Since this is a backend plugin, you must enable experimental features in Mise:
+  ```bash
+  mise settings set experimental true
+  ```
 * **PowerShell**: Used for installation and extraction logic.
 
 ## Installation
