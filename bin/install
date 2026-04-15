@@ -2,82 +2,71 @@
 
 set -euo pipefail
 
-VERSION="${ASDF_INSTALL_VERSION}"
-INSTALL_PATH="${ASDF_INSTALL_PATH}"
-
-# BASE_URL from the site (redirected version)
-BASE_URL="https://downloads.php.net/~windows/releases"
-
-echo "Checking available versions for PHP ${VERSION}..."
-
-find_filename() {
-    local url=$1
-    # Look for Thread Safe version (no -nts-)
-    # The regex matches php-<version>-Win32-.*-x64.zip
-    curl -sL "$url" | 
-        grep -oE "php-${VERSION}-Win32-.*-x64\.zip" | 
-        grep -v "\-nts\-" |
-        head -n 1
-}
-
-# Try main releases then archives
-FILENAME=$(find_filename "${BASE_URL}/") || FILENAME=""
-
-if [ -z "$FILENAME" ]; then
-    FILENAME=$(find_filename "${BASE_URL}/archives/") || FILENAME=""
-    if [ -n "$FILENAME" ]; then
-        DOWNLOAD_URL="${BASE_URL}/archives/${FILENAME}"
-    fi
+# Convert paths for Windows environment if necessary
+if command -v cygpath >/dev/null 2>&1; then
+    WIN_INSTALL_PATH=$(cygpath -w "$ASDF_INSTALL_PATH")
 else
-    DOWNLOAD_URL="${BASE_URL}/${FILENAME}"
+    # Simple conversion for Git Bash / MSYS2 if cygpath fails or is missing
+    WIN_INSTALL_PATH=$(echo "$ASDF_INSTALL_PATH" | sed -E 's/^\/([a-z])\//\1:\\/; s/\//\\/g')
 fi
 
-if [ -z "$FILENAME" ]; then
-    echo "Error: Could not find PHP version ${VERSION} (Thread Safe, x64) on windows.php.net" >&2
-    exit 1
-fi
+# Use PowerShell to find, download and extract PHP
+# This provides a more native experience for Windows users
+powershell.exe -NoProfile -Command "
+    \$ProgressPreference = 'SilentlyContinue';
+    \$Version = '$ASDF_INSTALL_VERSION';
+    \$Dest = '$WIN_INSTALL_PATH';
+    \$BaseUrl = 'https://downloads.php.net/~windows/releases/';
+    
+    function Find-ZipFilename(\$Url) {
+        try {
+            \$Response = Invoke-WebRequest -Uri \$Url -UseBasicParsing -ErrorAction Stop;
+            # Find a match for the requested version, ensuring it's x64 and NOT nts
+            \$Match = [regex]::Match(\$Response.Content, \"php-\$Version-Win32-.*-x64\\.zip\");
+            if (\$Match.Success -and \$Match.Value -notmatch '-nts-') {
+                return \$Match.Value
+            }
+        } catch { }
+        return \$null
+    }
 
-echo "Found release: ${FILENAME}"
-echo "Downloading from ${DOWNLOAD_URL}..."
+    Write-Host \"Searching for PHP \$Version (Thread Safe, x64)...\"
+    \$Filename = Find-ZipFilename \$BaseUrl;
+    \$DownloadUrl = \"\$BaseUrl\$Filename\";
 
-mkdir -p "${INSTALL_PATH}"
-TMP_ZIP="${INSTALL_PATH}/php-${VERSION}.zip"
+    if (-not \$Filename) {
+        Write-Host \"Checking archives...\";
+        \$Filename = Find-ZipFilename \"\${BaseUrl}archives/\";
+        \$DownloadUrl = \"\${BaseUrl}archives/\$Filename\";
+    }
 
-# Download using curl
-if ! curl -sL -f -o "${TMP_ZIP}" "${DOWNLOAD_URL}"; then
-    echo "Error: Download failed!" >&2
-    exit 1
-fi
+    if (-not \$Filename) {
+        Write-Error \"Could not find PHP version \$Version (Thread Safe, x64) on windows.php.net\";
+        exit 1;
+    }
 
-echo "Extracting to ${INSTALL_PATH}..."
+    Write-Host \"Found release: \$Filename\";
+    Write-Host \"Downloading from \$DownloadUrl...\";
+    
+    # Ensure destination path exists
+    if (-not (Test-Path \$Dest)) {
+        New-Item -ItemType Directory -Force -Path \$Dest | Out-Null;
+    }
 
-# Path conversion for PowerShell if needed
-to_win_path() {
-    if command -v cygpath >/dev/null 2>&1; then
-        cygpath -w "$1"
-    else
-        # Basic conversion for MSYS2/Git Bash
-        echo "$1" | sed -E 's/^\/([a-z])\//\1:\\/; s/\//\\/g'
-    fi
-}
+    \$ZipPath = Join-Path \$Dest \"php-\$Version.zip\";
+    Invoke-WebRequest -Uri \$DownloadUrl -OutFile \$ZipPath -ErrorAction Stop;
 
-# Use tar for extraction as it's common in Git Bash / MSYS2 and handles ZIPs
-# Some older tar versions on Windows might have issues, so we fallback
-if ! tar -xf "${TMP_ZIP}" -C "${INSTALL_PATH}"; then
-    echo "Extraction with tar failed. Trying PowerShell..."
-    WIN_ZIP=$(to_win_path "${TMP_ZIP}")
-    WIN_DEST=$(to_win_path "${INSTALL_PATH}")
-    powershell.exe -NoProfile -Command "Expand-Archive -Path '${WIN_ZIP}' -DestinationPath '${WIN_DEST}' -Force"
-fi
+    Write-Host \"Extracting to \$Dest...\";
+    Expand-Archive -Path \$ZipPath -DestinationPath \$Dest -Force -ErrorAction Stop;
+    Remove-Item \$ZipPath -Force;
 
-rm "${TMP_ZIP}"
+    # Set up default php.ini
+    \$IniDev = Join-Path \$Dest \"php.ini-development\";
+    \$Ini = Join-Path \$Dest \"php.ini\";
+    if ((Test-Path \$IniDev) -and -not (Test-Path \$Ini)) {
+        Copy-Item \$IniDev \$Ini;
+        Write-Host \"Created default php.ini from php.ini-development\";
+    }
 
-# Copy php.ini-development to php.ini if it doesn't exist
-if [ ! -f "${INSTALL_PATH}/php.ini" ]; then
-    if [ -f "${INSTALL_PATH}/php.ini-development" ]; then
-        cp "${INSTALL_PATH}/php.ini-development" "${INSTALL_PATH}/php.ini"
-        echo "Created default php.ini from php.ini-development"
-    fi
-fi
-
-echo "PHP ${VERSION} installed successfully!"
+    Write-Host \"PHP \$Version installed successfully!\";
+"
