@@ -1,87 +1,77 @@
-# mise-win-php
+# win-php (Mise Backend Plugin)
 
-A [Mise](https://mise.jdx.dev/) (asdf-compatible) plugin for installing PHP on Windows using prebuilt binaries from [windows.php.net](https://windows.php.net/downloads/releases/).
+A [Mise](https://mise.jdx.dev/) backend plugin for installing PHP on Windows using pre-built binaries from [windows.php.net](https://windows.php.net/downloads/releases/).
 
-This plugin is designed as a reliable, Windows-native PHP installer that avoids building from source, making it a faster and simpler alternative to `vfox-php`.
+This plugin uses the enhanced [Mise Backend Architecture](https://mise.jdx.dev/backend-plugin-development.html) (based on vfox) to provide a robust, cross-platform version listing and Windows-native installation.
 
 ## Requirements
 
-* **Windows OS**: Works in PowerShell, CMD, Git Bash, and MSYS2.
-* **Mise**: Installed and configured on your Windows system.
-* **PowerShell**: Used for all plugin logic (fetching, downloading, and extraction).
+* **Windows OS**: Installation and execution is only supported on Windows.
+* **Mise**: Installed and configured on your system.
+* **PowerShell**: Used for installation and extraction logic.
 
 ## Installation
 
 Add the plugin to Mise by providing the repository URL:
 
 ```bash
-mise plugin add win-php https://github.com/ioweb-gr/mise-win-php.git
-```
-
-## Upgrading
-
-To upgrade the plugin to the latest version:
-
-```bash
-mise plugin update win-php
+mise plugin install win-php https://github.com/ioweb-repos/mise-win-php.git
 ```
 
 ## Usage
 
-### Install a Specific Version
-Find the version you need from `windows.php.net` (Thread Safe x64 builds) and install it:
+As a backend plugin, it uses the `backend:tool@version` format. The tool name is currently `php` (Thread Safe, x64).
+
+### List Available Versions
 
 ```bash
-# List all available versions
-mise ls-remote win-php
-
-# Install a specific version
-mise install win-php@8.2.27
+# List all available versions for PHP on Windows
+mise ls-remote win-php:php
 ```
 
-### Set Global Version
-To use a specific PHP version across your entire system:
+### Install a Specific Version
 
 ```bash
-mise global win-php@8.2.27
+# Install a specific version
+mise use win-php:php@8.3.11
+```
+
+### Global Configuration
+
+```bash
+# Set global version in mise.toml
+mise use -g win-php:php@8.3.11
 ```
 
 ## How It Works
 
-The plugin utilizes native PowerShell scripts (`.ps1`) for maximum compatibility on Windows.
+This plugin transitions from standard asdf-style scripts to the modern backend architecture:
 
-1.  **Version Listing (`bin/list-all.ps1`)**: 
-    Dynamically scrapes `https://downloads.php.net/~windows/releases/` and its `archives/` directory using `Invoke-WebRequest`. It identifies and lists only **Thread Safe (TS)** and **x64** versions.
-2.  **Installation (`bin/install.ps1`)**:
-    *   Finds the exact ZIP filename for the requested version (e.g., `php-8.2.27-Win32-vs16-x64.zip`).
-    *   Downloads the ZIP using `Invoke-WebRequest`.
-    *   Extracts the content using `Expand-Archive`.
+1.  **Metadata (`metadata.lua`)**: Defines the backend as `win-php`.
+2.  **Version Listing (`hooks/backend_list_versions.lua`)**: 
+    Implemented in Lua for cross-platform performance. It dynamically scrapes `https://downloads.php.net/~windows/releases/` and its `archives/` directory using Mise's built-in `http` module. It identifies only **Thread Safe (TS)** and **x64** versions.
+3.  **Installation (`hooks/backend_install.lua`)**:
+    Validates that the target OS is Windows and then delegates the heavy lifting to a PowerShell script (`scripts/install.ps1`).
+    *   Finds the exact ZIP filename for the requested version.
+    *   Downloads and extracts the ZIP using native PowerShell commands (`Invoke-WebRequest`, `Expand-Archive`).
     *   Automatically creates a default `php.ini` from `php.ini-development` if one doesn't exist.
-    *   Cleans up the downloaded archive after a successful extraction.
-3.  **Execution Environment (`bin/exec-env.ps1`)**:
-    Adds the PHP installation directory to your `PATH`.
+4.  **Execution Environment (`hooks/backend_exec_env.lua`)**:
+    Correctly sets up the `PATH` variable to include the PHP installation directory.
 
-## Development & Releases
+## Development
 
-This project uses a `master` branch for the primary codebase.
+This project uses the `master` branch for the primary codebase.
 
-### Auto-Release on Tag
+### Tagging & Releases
 
-A GitHub Actions workflow is included to automate releases. When you push a semantic version tag (e.g., `1.0.0`), a new GitHub Release is automatically created.
+Push a semantic version tag (e.g., `1.1.0`) to trigger the automated GitHub Release workflow.
 
-**To release a new version:**
-
-1.  Ensure all changes are on the `master` branch.
-2.  Tag the version (without a `v` prefix):
-    ```bash
-    git checkout master
-    git pull
-    git tag 1.0.0
-    git push origin 1.0.0
-    ```
-3.  GitHub Actions will handle the rest, generating release notes and marking the release as latest.
+```bash
+git tag 1.1.0
+git push origin 1.1.0
+```
 
 ## Troubleshooting
 
-*   **Version Not Found**: If a specific version isn't listed, ensure it exists as a Thread Safe x64 ZIP on `windows.php.net/downloads/releases/`.
-*   **Execution Policy**: Ensure your PowerShell execution policy allows running scripts if you encounter permission issues.
+*   **Version Not Found**: Ensure the requested version exists as a Thread Safe x64 ZIP on `windows.php.net/downloads/releases/`.
+*   **Unsupported OS**: If you try to list versions on Linux/macOS, it will work (listing the remote Windows versions), but attempting to **install** will result in an error message explaining that it is only for Windows.
