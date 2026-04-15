@@ -6,9 +6,9 @@ This plugin is designed as a reliable, Windows-native PHP installer that avoids 
 
 ## Requirements
 
-* **Windows OS**: Works in Git Bash, MSYS2, and other common Windows shell environments.
-* **curl**: Used for downloading binaries and fetching version lists.
-* **tar**: Used for extraction (with a PowerShell fallback if `tar` is unavailable or fails).
+* **Windows OS**: Works in PowerShell, CMD, Git Bash, and MSYS2.
+* **Mise**: Installed and configured on your Windows system.
+* **PowerShell**: Used for all plugin logic (fetching, downloading, and extraction).
 
 ## Installation
 
@@ -16,6 +16,14 @@ Add the plugin to Mise by providing the repository URL:
 
 ```bash
 mise plugin add win-php https://github.com/ioweb-gr/mise-win-php.git
+```
+
+## Upgrading
+
+To upgrade the plugin to the latest version:
+
+```bash
+mise plugin update win-php
 ```
 
 ## Usage
@@ -40,16 +48,18 @@ mise global win-php@8.2.27
 
 ## How It Works
 
-1.  **Version Listing (`bin/list-all`)**: 
-    Dynamically scrapes `https://downloads.php.net/~windows/releases/` and its `archives/` directory. It identifies and lists only **Thread Safe (TS)** and **x64** versions, ensuring compatibility with most common Windows PHP setups.
-2.  **Installation (`bin/install`)**:
+The plugin utilizes native PowerShell scripts (`.ps1`) for maximum compatibility on Windows.
+
+1.  **Version Listing (`bin/list-all.ps1`)**: 
+    Dynamically scrapes `https://downloads.php.net/~windows/releases/` and its `archives/` directory using `Invoke-WebRequest`. It identifies and lists only **Thread Safe (TS)** and **x64** versions.
+2.  **Installation (`bin/install.ps1`)**:
     *   Finds the exact ZIP filename for the requested version (e.g., `php-8.2.27-Win32-vs16-x64.zip`).
-    *   Downloads the ZIP to a temporary location within the install path.
-    *   Extracts the content using `tar -xf`. If `tar` fails, it falls back to PowerShell's `Expand-Archive`.
+    *   Downloads the ZIP using `Invoke-WebRequest`.
+    *   Extracts the content using `Expand-Archive`.
     *   Automatically creates a default `php.ini` from `php.ini-development` if one doesn't exist.
     *   Cleans up the downloaded archive after a successful extraction.
-3.  **Execution Environment (`bin/exec-env`)**:
-    Adds the PHP installation directory to your `PATH`, ensuring that `php` and other binaries are available in your shell.
+3.  **Execution Environment (`bin/exec-env.ps1`)**:
+    Adds the PHP installation directory to your `PATH`.
 
 ## Development & Releases
 
@@ -74,4 +84,4 @@ A GitHub Actions workflow is included to automate releases. When you push a sema
 ## Troubleshooting
 
 *   **Version Not Found**: If a specific version isn't listed, ensure it exists as a Thread Safe x64 ZIP on `windows.php.net/downloads/releases/`.
-*   **Extraction Errors**: Ensure your terminal has permission to write to the Mise install directory. The plugin will attempt to use PowerShell if standard extraction tools fail.
+*   **Execution Policy**: Ensure your PowerShell execution policy allows running scripts if you encounter permission issues.
