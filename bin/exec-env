@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-
-# Mise/asdf exec-env script
-# Adds the PHP directory to PATH
-
-echo "export PATH=\"$ASDF_INSTALL_PATH:\$PATH\""
