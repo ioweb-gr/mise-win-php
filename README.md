@@ -15,7 +15,7 @@ This plugin is designed as a reliable, Windows-native PHP installer that avoids 
 Add the plugin to Mise by providing the repository URL:
 
 ```bash
-mise plugin add win-php https://github.com/your-username/mise-win-php.git
+mise plugin add win-php https://github.com/ioweb-gr/mise-win-php.git
 ```
 
 ## Usage
