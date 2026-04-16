@@ -62,99 +62,95 @@ function PLUGIN:BackendInstall(ctx)
     -- ── xdebug ───────────────────────────────────────────────────────────────
     -- Fetch the xdebug.org file listing and download the latest DLL that matches
     -- this PHP minor version and VC runtime.  xdebug ships a single .dll (no zip).
+    -- pcall cannot wrap async functions (yields across C boundary), so errors are
+    -- handled via return-value checks instead.
     local xdebug_dll_path = nil
-    local xdebug_ok, xdebug_err = pcall(function()
+    do
         local semver = require("semver")
         local xdebug_base = "https://xdebug.org/files/"
 
         local resp, err = http.get({ url = xdebug_base })
         if err or resp.status_code ~= 200 then
-            error("Could not reach xdebug.org/files/")
-        end
+            print("Warning: xdebug not installed: could not reach xdebug.org/files/")
+        else
+            -- Pattern: php_xdebug-3.4.4-8.3-vs16-x86_64.dll
+            local pat = "php_xdebug%-([%d%.]+)%-" .. escaped_minor .. "%-" .. vc_ver .. "%-x86_64%.dll"
+            local versions, seen = {}, {}
+            for ver in resp.body:gmatch(pat) do
+                if not seen[ver] then
+                    table.insert(versions, ver)
+                    seen[ver] = true
+                end
+            end
 
-        -- Pattern: php_xdebug-3.4.4-8.3-vs16-x86_64.dll
-        local pat = "php_xdebug%-([%d%.]+)%-" .. escaped_minor .. "%-" .. vc_ver .. "%-x86_64%.dll"
-
-        local versions, seen = {}, {}
-        for ver in resp.body:gmatch(pat) do
-            if not seen[ver] then
-                table.insert(versions, ver)
-                seen[ver] = true
+            if #versions == 0 then
+                print("Warning: xdebug not installed: no build found for PHP " .. php_minor .. " / " .. vc_ver)
+            else
+                local sorted = semver.sort(versions)
+                local latest = sorted[#sorted]
+                local dll_name = string.format("php_xdebug-%s-%s-%s-x86_64.dll", latest, php_minor, vc_ver)
+                local dll_dest = file.join_path(ext_dir, dll_name)
+                local _, xdl_err = http.download_file({ url = xdebug_base .. dll_name }, dll_dest)
+                if xdl_err then
+                    print("Warning: xdebug not installed: download failed: " .. tostring(xdl_err))
+                else
+                    xdebug_dll_path = dll_dest
+                end
             end
         end
-        if #versions == 0 then
-            error("No xdebug build found for PHP " .. php_minor .. " / " .. vc_ver)
-        end
-
-        local sorted = semver.sort(versions)
-        local latest = sorted[#sorted]
-        local dll_name = string.format("php_xdebug-%s-%s-%s-x86_64.dll", latest, php_minor, vc_ver)
-
-        local dll_dest = file.join_path(ext_dir, dll_name)
-        local _, xdl_err = http.download_file({ url = xdebug_base .. dll_name }, dll_dest)
-        if xdl_err then
-            error("Failed to download xdebug: " .. tostring(xdl_err))
-        end
-
-        xdebug_dll_path = dll_dest
-    end)
-    if not xdebug_ok then
-        print("Warning: xdebug not installed: " .. tostring(xdebug_err))
     end
 
     -- ── pcov ─────────────────────────────────────────────────────────────────
     -- Find the latest pcov release on the PECL Windows build server, download
     -- the TS zip for this PHP version, and extract the DLL into ext/.
     local pcov_installed = false
-    local pcov_ok, pcov_err = pcall(function()
+    do
         local semver = require("semver")
         local pcov_base = "https://windows.php.net/downloads/pecl/releases/pcov/"
 
         local resp, err = http.get({ url = pcov_base })
         if err or resp.status_code ~= 200 then
-            error("Could not reach PECL pcov releases")
-        end
+            print("Warning: pcov not installed: could not reach PECL pcov releases")
+        else
+            -- Directory listing has links like href="1.0.12/"
+            local versions, seen = {}, {}
+            for ver in resp.body:gmatch('href="([%d]+%.[%d]+%.[%d]+)/"') do
+                if not seen[ver] then
+                    table.insert(versions, ver)
+                    seen[ver] = true
+                end
+            end
 
-        -- Directory listing has links like href="1.0.12/"
-        local versions, seen = {}, {}
-        for ver in resp.body:gmatch('href="([%d]+%.[%d]+%.[%d]+)/"') do
-            if not seen[ver] then
-                table.insert(versions, ver)
-                seen[ver] = true
+            if #versions == 0 then
+                print("Warning: pcov not installed: no versions found in PECL listing")
+            else
+                local sorted = semver.sort(versions)
+                local latest = sorted[#sorted]
+                local ver_url = pcov_base .. latest .. "/"
+
+                local resp2, err2 = http.get({ url = ver_url })
+                if err2 or resp2.status_code ~= 200 then
+                    print("Warning: pcov not installed: could not fetch version directory for " .. latest)
+                else
+                    -- Pattern: php_pcov-1.0.12-8.3-ts-vs16-x64.zip
+                    local zip_pat = "php_pcov%-[%d%.]+%-" .. escaped_minor .. "%-ts%-" .. vc_ver .. "%-x64%.zip"
+                    local zip_name = resp2.body:match(zip_pat)
+                    if not zip_name then
+                        print("Warning: pcov not installed: no build for PHP " .. php_minor .. " / " .. vc_ver)
+                    else
+                        local zip_dest = file.join_path(download_path, zip_name)
+                        local _, pdl_err = http.download_file({ url = ver_url .. zip_name }, zip_dest)
+                        if pdl_err then
+                            print("Warning: pcov not installed: download failed: " .. tostring(pdl_err))
+                        else
+                            -- PECL zips place the DLL at the root; extract directly into ext/
+                            archiver.decompress(zip_dest, ext_dir)
+                            pcov_installed = true
+                        end
+                    end
+                end
             end
         end
-        if #versions == 0 then
-            error("No pcov versions found in PECL listing")
-        end
-
-        local sorted = semver.sort(versions)
-        local latest = sorted[#sorted]
-        local ver_url = pcov_base .. latest .. "/"
-
-        resp, err = http.get({ url = ver_url })
-        if err or resp.status_code ~= 200 then
-            error("Could not fetch pcov version directory for " .. latest)
-        end
-
-        -- Pattern: php_pcov-1.0.12-8.3-ts-vs16-x64.zip
-        local zip_pat = "php_pcov%-[%d%.]+%-" .. escaped_minor .. "%-ts%-" .. vc_ver .. "%-x64%.zip"
-        local zip_name = resp.body:match(zip_pat)
-        if not zip_name then
-            error("No pcov build for PHP " .. php_minor .. " / " .. vc_ver)
-        end
-
-        local zip_dest = file.join_path(download_path, zip_name)
-        local _, pdl_err = http.download_file({ url = ver_url .. zip_name }, zip_dest)
-        if pdl_err then
-            error("Failed to download pcov: " .. tostring(pdl_err))
-        end
-
-        -- PECL zips place the DLL at the root; extract directly into ext/
-        archiver.decompress(zip_dest, ext_dir)
-        pcov_installed = true
-    end)
-    if not pcov_ok then
-        print("Warning: pcov not installed: " .. tostring(pcov_err))
     end
 
     -- ── php.ini ──────────────────────────────────────────────────────────────
