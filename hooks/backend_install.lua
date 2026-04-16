@@ -63,7 +63,7 @@ function PLUGIN:BackendInstall(ctx)
     -- Fetch the xdebug.org file listing and download the latest DLL that matches
     -- this PHP minor version and VC runtime.  xdebug ships a single .dll (no zip).
     local xdebug_dll_path = nil
-    pcall(function()
+    local xdebug_ok, xdebug_err = pcall(function()
         local semver = require("semver")
         local xdebug_base = "https://xdebug.org/files/"
 
@@ -98,12 +98,15 @@ function PLUGIN:BackendInstall(ctx)
 
         xdebug_dll_path = dll_dest
     end)
+    if not xdebug_ok then
+        print("Warning: xdebug not installed: " .. tostring(xdebug_err))
+    end
 
     -- ── pcov ─────────────────────────────────────────────────────────────────
     -- Find the latest pcov release on the PECL Windows build server, download
     -- the TS zip for this PHP version, and extract the DLL into ext/.
     local pcov_installed = false
-    pcall(function()
+    local pcov_ok, pcov_err = pcall(function()
         local semver = require("semver")
         local pcov_base = "https://windows.php.net/downloads/pecl/releases/pcov/"
 
@@ -150,6 +153,9 @@ function PLUGIN:BackendInstall(ctx)
         archiver.decompress(zip_dest, ext_dir)
         pcov_installed = true
     end)
+    if not pcov_ok then
+        print("Warning: pcov not installed: " .. tostring(pcov_err))
+    end
 
     -- ── php.ini ──────────────────────────────────────────────────────────────
     -- Patch php.ini-development → php.ini entirely in Lua (standard io library).
