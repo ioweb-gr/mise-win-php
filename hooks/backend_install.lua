@@ -60,23 +60,19 @@ function PLUGIN:BackendInstall(ctx)
     local ext_dir = file.join_path(install_path, "ext")
 
     -- ── xdebug ───────────────────────────────────────────────────────────────
-    -- Fetch the xdebug.org file listing and download the latest DLL that matches
-    -- this PHP minor version and VC runtime.  xdebug ships a single .dll (no zip).
-    -- pcall cannot wrap async functions (yields across C boundary), so errors are
-    -- handled via return-value checks instead.
+    -- Use the PECL Windows build server (same source as pcov) so all PHP
+    -- versions including 7.4 are covered without scraping xdebug.org.
     local xdebug_dll_path = nil
     do
         local semver = require("semver")
-        -- Scrape the download page (not /files/ which is a 404 directory listing).
-        -- TS builds are named: php_xdebug-{ver}-{phpver}-ts-{vc}-x86_64.dll
-        local resp, err = http.get({ url = "https://xdebug.org/download" })
+        local xdebug_base = "https://windows.php.net/downloads/pecl/releases/xdebug/"
+
+        local resp, err = http.get({ url = xdebug_base })
         if err or resp.status_code ~= 200 then
-            local reason = err and tostring(err) or ("HTTP " .. tostring(resp.status_code))
-            print("Warning: xdebug not installed: could not reach xdebug.org/download: " .. reason)
+            print("Warning: xdebug not installed: could not reach PECL xdebug releases")
         else
-            local pat = "php_xdebug%-([%d%.]+)%-" .. escaped_minor .. "%-ts%-" .. vc_ver .. "%-x86_64%.dll"
             local versions, seen = {}, {}
-            for ver in resp.body:gmatch(pat) do
+            for ver in resp.body:gmatch('href="([%d]+%.[%d]+%.[%d]+)/"') do
                 if not seen[ver] then
                     table.insert(versions, ver)
                     seen[ver] = true
@@ -84,17 +80,31 @@ function PLUGIN:BackendInstall(ctx)
             end
 
             if #versions == 0 then
-                print("Warning: xdebug not installed: no TS build found for PHP " .. php_minor .. " / " .. vc_ver)
+                print("Warning: xdebug not installed: no versions found in PECL listing")
             else
                 local sorted = semver.sort(versions)
                 local latest = sorted[#sorted]
-                local dll_name = string.format("php_xdebug-%s-%s-ts-%s-x86_64.dll", latest, php_minor, vc_ver)
-                local dll_dest = file.join_path(ext_dir, dll_name)
-                local _, xdl_err = http.download_file({ url = "https://xdebug.org/files/" .. dll_name }, dll_dest)
-                if xdl_err then
-                    print("Warning: xdebug not installed: download failed: " .. tostring(xdl_err))
+                local ver_url = xdebug_base .. latest .. "/"
+
+                local resp2, err2 = http.get({ url = ver_url })
+                if err2 or resp2.status_code ~= 200 then
+                    print("Warning: xdebug not installed: could not fetch version directory for " .. latest)
                 else
-                    xdebug_dll_path = dll_dest
+                    -- Pattern: php_xdebug-3.4.4-8.1-ts-vs16-x64.zip
+                    local zip_pat = "php_xdebug%-[%d%.]+%-" .. escaped_minor .. "%-ts%-" .. vc_ver .. "%-x64%.zip"
+                    local zip_name = resp2.body:match(zip_pat)
+                    if not zip_name then
+                        print("Warning: xdebug not installed: no build for PHP " .. php_minor .. " / " .. vc_ver)
+                    else
+                        local zip_dest = file.join_path(download_path, zip_name)
+                        local _, xdl_err = http.download_file({ url = ver_url .. zip_name }, zip_dest)
+                        if xdl_err then
+                            print("Warning: xdebug not installed: download failed: " .. tostring(xdl_err))
+                        else
+                            archiver.decompress(zip_dest, ext_dir)
+                            xdebug_dll_path = file.join_path(ext_dir, "php_xdebug.dll")
+                        end
+                    end
                 end
             end
         end

@@ -94,7 +94,7 @@ For each PHP version the plugin:
 
 1. Downloads the **Thread Safe x64** ZIP from `windows.php.net` (checks the releases page first, then archives).
 2. Extracts it into Mise's install directory.
-3. Downloads the latest **xdebug** DLL for the matching PHP minor version and VC runtime from [xdebug.org](https://xdebug.org/files/) and places it in `ext/`.
+3. Downloads the latest **xdebug** ZIP for the matching PHP minor version and VC runtime from the [PECL Windows build server](https://windows.php.net/downloads/pecl/releases/xdebug/) and extracts the DLL into `ext/`.
 4. Downloads the latest **pcov** DLL from the [PECL Windows build server](https://windows.php.net/downloads/pecl/releases/pcov/) and extracts it into `ext/`.
 5. Creates **`php.ini`** from `php.ini-development` with the following pre-configured:
 
