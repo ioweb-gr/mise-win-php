@@ -88,6 +88,20 @@ Install all versions at once from the repo root or globally:
 mise install win-php:php@8.1 win-php:php@8.3 win-php:php@7.4
 ```
 
+### Update the plugin
+
+Pull the latest plugin code (bug fixes, new PHP version support):
+
+```bash
+mise plugins update win-php
+```
+
+To pick up the changes for an already-installed PHP version, reinstall it:
+
+```bash
+mise install --force win-php:php@8.3
+```
+
 ## What gets installed
 
 For each PHP version the plugin:
@@ -125,7 +139,7 @@ For each PHP version the plugin:
 |------|---------|
 | `metadata.lua` | Declares the plugin as `win-php` |
 | `hooks/backend_list_versions.lua` | Scrapes `windows.php.net` for TS x64 ZIPs using Mise's built-in `http` module; returns a semver-sorted list |
-| `hooks/backend_install.lua` | Downloads + extracts PHP, xdebug, pcov; writes `php.ini` via PowerShell (Lua has `file.read` but no `file.write`) |
+| `hooks/backend_install.lua` | Downloads + extracts PHP, xdebug, pcov; writes `php.ini` via Lua `io` |
 | `hooks/backend_exec_env.lua` | Returns `PATH = install_path` in `env_vars`; mise uses this to scan for executables and create shims (e.g. `php.cmd`), then strips it before applying env vars to the shell |
 
 ## Troubleshooting
