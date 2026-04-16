@@ -152,78 +152,85 @@ function PLUGIN:BackendInstall(ctx)
     end)
 
     -- ── php.ini ──────────────────────────────────────────────────────────────
-    -- Use PowerShell to create php.ini from php.ini-development with:
-    --   • Magento 2 extensions uncommented
-    --   • opcache (zend_extension) enabled
-    --   • extension_dir uncommented
-    --   • xdebug and pcov sections appended (if downloaded above)
-    --
-    -- file.read exists but file.write does not in the mise Lua API, so all
-    -- read-patch-write operations happen entirely inside PowerShell — no file
-    -- content passes through command-line arguments.
+    -- Patch php.ini-development → php.ini entirely in Lua (standard io library).
+    -- Avoids the PowerShell → cmd.exe path, which mangles regex metacharacters
+    -- like ^ ( ) when they pass through CMD.EXE's command-line parser.
     local ini_dev = file.join_path(install_path, "php.ini-development")
     local ini = file.join_path(install_path, "php.ini")
 
     if file.exists(ini_dev) and not file.exists(ini) then
-        local cmd = require("cmd")
-
         -- Extensions required/recommended for Magento 2.
-        -- gd2 = PHP 7.x name; gd = PHP 8.x name.  Both listed; the regex
-        -- silently skips whichever name is absent from the ini template.
+        -- gd2 = PHP 7.x name; gd = PHP 8.x name.  Both listed; the
+        -- pattern silently skips whichever name is absent from the template.
         local extensions = {
             "bcmath", "curl", "exif", "fileinfo",
             "gd", "gd2", "gettext", "iconv", "intl",
             "mbstring", "mysqli", "openssl", "pdo_mysql",
             "soap", "sockets", "sodium", "xsl", "zip",
         }
-        local ext_pattern = table.concat(extensions, "|")
 
-        -- Uncomment extensions, opcache, and extension_dir in one pass
-        local ps_setup = string.format(
-            "$c=Get-Content -LiteralPath '%s';" ..
-            "$c=$c -replace '^;(extension=(?:%s))','$1';" ..
-            "$c=$c -replace '^;(zend_extension=opcache)','$1';" ..
-            "$c=$c -replace '^;(zend_extension=php_opcache)','$1';" ..
-            "$c=$c -replace '^;(extension_dir)','$1';" ..
-            "$c|Set-Content -LiteralPath '%s'",
-            ini_dev, ext_pattern, ini
-        )
-
-        local ini_ok, ini_err = pcall(function()
-            cmd.exec("powershell -NoProfile -ExecutionPolicy Bypass -Command \"" .. ps_setup .. "\"")
-        end)
-
-        if not ini_ok then
-            print("Warning: could not create php.ini: " .. tostring(ini_err))
+        local f_in = io.open(ini_dev, "r")
+        if not f_in then
+            print("Warning: could not open " .. ini_dev)
         else
-            -- Append xdebug section if the DLL was downloaded successfully.
-            -- Full path is used for zend_extension so it works regardless of
-            -- whether extension_dir resolves correctly at runtime.
-            if xdebug_dll_path then
-                local xdebug_ps = string.format(
-                    "Add-Content -LiteralPath '%s' -Value " ..
-                    "'','[xdebug]'," ..
-                    "'zend_extension=%s'," ..
-                    "'xdebug.mode=debug,coverage'," ..
-                    "'xdebug.start_with_request=trigger'," ..
-                    "'xdebug.client_host=127.0.0.1'," ..
-                    "'xdebug.client_port=9003'",
-                    ini, xdebug_dll_path
-                )
-                pcall(function()
-                    cmd.exec("powershell -NoProfile -ExecutionPolicy Bypass -Command \"" .. xdebug_ps .. "\"")
-                end)
+            local content = f_in:read("*a")
+            f_in:close()
+
+            -- Uncomment matching lines.
+            -- Prepend \n so the very first line is reachable with the \n; anchor.
+            local text = "\n" .. content
+
+            -- ;extension=name  →  extension=name
+            -- [^%a%d_] after the name ensures "gd" never matches "gd2",
+            -- "socket" never matches "sockets", etc.  It also matches the
+            -- trailing \n, so end-of-line lines are handled in one pass.
+            for _, ext in ipairs(extensions) do
+                text = text:gsub("\n;(extension=" .. ext .. "[^%a%d_][^\n]*)", "\n%1")
             end
 
-            -- Append pcov section if the DLL was extracted successfully.
-            if pcov_installed then
-                local pcov_ps = string.format(
-                    "Add-Content -LiteralPath '%s' -Value '','[pcov]','extension=php_pcov.dll'",
-                    ini
-                )
-                pcall(function()
-                    cmd.exec("powershell -NoProfile -ExecutionPolicy Bypass -Command \"" .. pcov_ps .. "\"")
-                end)
+            -- ;zend_extension=opcache  and  ;zend_extension=php_opcache
+            text = text:gsub("\n;(zend_extension=opcache[^\n]*)", "\n%1")
+            text = text:gsub("\n;(zend_extension=php_opcache[^\n]*)", "\n%1")
+
+            -- ;extension_dir = "..."  (both the "./" and "ext" variants)
+            text = text:gsub("\n;(extension_dir[^\n]*)", "\n%1")
+
+            -- Remove the prepended \n
+            text = text:sub(2)
+
+            local f_out = io.open(ini, "w")
+            if not f_out then
+                print("Warning: could not write " .. ini)
+            else
+                f_out:write(text)
+                f_out:close()
+                print("Created php.ini with extensions enabled")
+
+                -- Append xdebug section.
+                -- Full path used for zend_extension so PHP finds the DLL
+                -- regardless of how extension_dir is resolved at runtime.
+                if xdebug_dll_path then
+                    local f_xd = io.open(ini, "a")
+                    if f_xd then
+                        f_xd:write("\n[xdebug]\n")
+                        f_xd:write("zend_extension=" .. xdebug_dll_path .. "\n")
+                        f_xd:write("xdebug.mode=debug,coverage\n")
+                        f_xd:write("xdebug.start_with_request=trigger\n")
+                        f_xd:write("xdebug.client_host=127.0.0.1\n")
+                        f_xd:write("xdebug.client_port=9003\n")
+                        f_xd:close()
+                    end
+                end
+
+                -- Append pcov section.
+                if pcov_installed then
+                    local f_pcov = io.open(ini, "a")
+                    if f_pcov then
+                        f_pcov:write("\n[pcov]\n")
+                        f_pcov:write("extension=php_pcov.dll\n")
+                        f_pcov:close()
+                    end
+                end
             end
         end
     end

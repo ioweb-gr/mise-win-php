@@ -39,24 +39,53 @@ mise use win-php:php@8.3
 mise use -g win-php:php@8.3
 ```
 
-### Run a single command with `mise exec`
+### Use PHP directly
 
-```bash
-# Check the installed version
-mise exec win-php:php@8.3 -- php -v
+Once a version is installed, `php` is available as a normal command — no `mise exec` wrapper needed.
 
-# Run a script
-mise exec win-php:php@8.3 -- php my-script.php
+`mise install` / `mise use` automatically update the `php` shim. Add the shims directory to your PATH once and `php` resolves correctly from any project:
 
-# Open the interactive REPL
-mise exec win-php:php@8.3 -- php -a
+```
+# Windows — add to your system/user PATH:
+%LOCALAPPDATA%\mise\shims
+
+# or use shell activation in your PowerShell profile:
+# Invoke-Expression (&mise activate pwsh | Out-String)
 ```
 
-If you have a `mise.toml` in your project that already pins the version, you can omit the tool argument:
+Then just run `php` as usual:
 
 ```bash
-# mise.toml already contains: win-php:php = "8.3"
-mise exec -- php -v
+php -v
+php artisan ...
+composer install
+```
+
+### Per-project PHP versions
+
+Put a `mise.toml` in each project root. The `php` shim picks the right version automatically based on which directory you are in.
+
+```
+project-a/
+  mise.toml    →  "win-php:php" = "8.1"
+
+project-b/
+  mise.toml    →  "win-php:php" = "8.3"
+
+legacy-app/
+  mise.toml    →  "win-php:php" = "7.4"
+```
+
+```bash
+cd project-a && php -v    # PHP 8.1.x
+cd project-b && php -v    # PHP 8.3.x
+cd legacy-app && php -v   # PHP 7.4.x
+```
+
+Install all versions at once from the repo root or globally:
+
+```bash
+mise install win-php:php@8.1 win-php:php@8.3 win-php:php@7.4
 ```
 
 ## What gets installed
@@ -97,7 +126,7 @@ For each PHP version the plugin:
 | `metadata.lua` | Declares the plugin as `win-php` |
 | `hooks/backend_list_versions.lua` | Scrapes `windows.php.net` for TS x64 ZIPs using Mise's built-in `http` module; returns a semver-sorted list |
 | `hooks/backend_install.lua` | Downloads + extracts PHP, xdebug, pcov; writes `php.ini` via PowerShell (Lua has `file.read` but no `file.write`) |
-| `hooks/backend_exec_env.lua` | Adds the PHP install directory to `PATH` and `bin_paths` so Mise can find `php.exe` |
+| `hooks/backend_exec_env.lua` | Returns `PATH = install_path` in `env_vars`; mise uses this to scan for executables and create shims (e.g. `php.cmd`), then strips it before applying env vars to the shell |
 
 ## Troubleshooting
 
