@@ -67,15 +67,14 @@ function PLUGIN:BackendInstall(ctx)
     local xdebug_dll_path = nil
     do
         local semver = require("semver")
-        local xdebug_base = "https://xdebug.org/files/"
-
-        local resp, err = http.get({ url = xdebug_base })
+        -- Scrape the download page (not /files/ which is a 404 directory listing).
+        -- TS builds are named: php_xdebug-{ver}-{phpver}-ts-{vc}-x86_64.dll
+        local resp, err = http.get({ url = "https://xdebug.org/download" })
         if err or resp.status_code ~= 200 then
             local reason = err and tostring(err) or ("HTTP " .. tostring(resp.status_code))
-            print("Warning: xdebug not installed: could not reach xdebug.org/files/: " .. reason)
+            print("Warning: xdebug not installed: could not reach xdebug.org/download: " .. reason)
         else
-            -- Pattern: php_xdebug-3.4.4-8.3-vs16-x86_64.dll
-            local pat = "php_xdebug%-([%d%.]+)%-" .. escaped_minor .. "%-" .. vc_ver .. "%-x86_64%.dll"
+            local pat = "php_xdebug%-([%d%.]+)%-" .. escaped_minor .. "%-ts%-" .. vc_ver .. "%-x86_64%.dll"
             local versions, seen = {}, {}
             for ver in resp.body:gmatch(pat) do
                 if not seen[ver] then
@@ -85,13 +84,13 @@ function PLUGIN:BackendInstall(ctx)
             end
 
             if #versions == 0 then
-                print("Warning: xdebug not installed: no build found for PHP " .. php_minor .. " / " .. vc_ver)
+                print("Warning: xdebug not installed: no TS build found for PHP " .. php_minor .. " / " .. vc_ver)
             else
                 local sorted = semver.sort(versions)
                 local latest = sorted[#sorted]
-                local dll_name = string.format("php_xdebug-%s-%s-%s-x86_64.dll", latest, php_minor, vc_ver)
+                local dll_name = string.format("php_xdebug-%s-%s-ts-%s-x86_64.dll", latest, php_minor, vc_ver)
                 local dll_dest = file.join_path(ext_dir, dll_name)
-                local _, xdl_err = http.download_file({ url = xdebug_base .. dll_name }, dll_dest)
+                local _, xdl_err = http.download_file({ url = "https://xdebug.org/files/" .. dll_name }, dll_dest)
                 if xdl_err then
                     print("Warning: xdebug not installed: download failed: " .. tostring(xdl_err))
                 else
