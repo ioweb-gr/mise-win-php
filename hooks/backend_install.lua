@@ -71,7 +71,8 @@ function PLUGIN:BackendInstall(ctx)
 
         local resp, err = http.get({ url = xdebug_base })
         if err or resp.status_code ~= 200 then
-            print("Warning: xdebug not installed: could not reach xdebug.org/files/")
+            local reason = err and tostring(err) or ("HTTP " .. tostring(resp.status_code))
+            print("Warning: xdebug not installed: could not reach xdebug.org/files/: " .. reason)
         else
             -- Pattern: php_xdebug-3.4.4-8.3-vs16-x86_64.dll
             local pat = "php_xdebug%-([%d%.]+)%-" .. escaped_minor .. "%-" .. vc_ver .. "%-x86_64%.dll"
