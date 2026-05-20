@@ -3,7 +3,7 @@
 function PLUGIN:BackendInstall(ctx)
     local http = require("http")
     local file = require("file")
-    local archiver = require("archiver")
+    local tool = ctx.tool or "php"
 
     if RUNTIME.osType ~= "windows" then
         error("This plugin only supports installation on Windows. PHP binaries from windows.php.net are Windows-specific.")
@@ -12,6 +12,66 @@ function PLUGIN:BackendInstall(ctx)
     local version = ctx.version
     local install_path = ctx.install_path
     local download_path = ctx.download_path
+
+    local function install_composer()
+        local composer_version = version
+
+        local function composer_channel(version_spec)
+            if version_spec == "latest" then
+                return "stable"
+            elseif version_spec == "1" or version_spec == "1.x" or version_spec == "1@latest" then
+                return "1"
+            elseif version_spec == "2" or version_spec == "2.x" or version_spec == "2@latest" then
+                return "2"
+            end
+
+            return nil
+        end
+
+        local channel = composer_channel(composer_version)
+        if channel then
+            local requested_version = composer_version
+            local resp, err = http.get({ url = "https://getcomposer.org/versions" })
+            if err or resp.status_code ~= 200 then
+                error("Could not resolve Composer " .. requested_version .. " from getcomposer.org")
+            end
+
+            local escaped_channel = channel:gsub("%.", "%%.")
+            composer_version = resp.body:match('"' .. escaped_channel .. '"%s*:%s*%[%s*{.-"version"%s*:%s*"([^"]+)"')
+            if not composer_version then
+                error("Could not parse Composer " .. requested_version .. " from getcomposer.org")
+            end
+        end
+
+        local composer_path = file.join_path(install_path, "composer.phar")
+        local download_url = "https://getcomposer.org/download/" .. composer_version .. "/composer.phar"
+        local _, dl_err = http.download_file({ url = download_url }, composer_path)
+        if dl_err then
+            error("Failed to download Composer " .. composer_version .. ": " .. tostring(dl_err))
+        end
+
+        local cmd_path = file.join_path(install_path, "composer.cmd")
+        local f_cmd = io.open(cmd_path, "w")
+        if not f_cmd then
+            error("Could not write " .. cmd_path)
+        end
+
+        f_cmd:write("@echo off\r\n")
+        f_cmd:write("setlocal\r\n")
+        f_cmd:write("php \"%~dp0composer.phar\" %*\r\n")
+        f_cmd:write("exit /b %ERRORLEVEL%\r\n")
+        f_cmd:close()
+
+        return {}
+    end
+
+    if tool == "composer" then
+        return install_composer()
+    elseif tool ~= "php" then
+        error("Unsupported tool: " .. tool .. ". Supported tools are php and composer.")
+    end
+
+    local archiver = require("archiver")
     local base_url = "https://downloads.php.net/~windows/releases/"
 
     -- Escape dots in the version string for use as a Lua pattern

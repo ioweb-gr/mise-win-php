@@ -1,7 +1,8 @@
 --- Sets up environment variables for a tool
 --- Documentation: https://mise.jdx.dev/backend-plugin-development.html#backendexecenv
 function PLUGIN:BackendExecEnv(ctx)
-    -- PHP binaries are in the root install directory, not a bin/ subdirectory.
+    -- PHP binaries and the generated Composer launcher live in the root install
+    -- directory, not a bin/ subdirectory.
     -- mise reads PATH from env_vars to determine where to scan for executables when
     -- creating shims (e.g. php.cmd on Windows). It then filters PATH out before
     -- applying env_vars to the shell, so this does not replace the user's PATH.

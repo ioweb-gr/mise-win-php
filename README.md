@@ -1,6 +1,6 @@
 # win-php (Mise Backend Plugin)
 
-A [Mise](https://mise.jdx.dev/) backend plugin for installing PHP on Windows using pre-built binaries from [windows.php.net](https://windows.php.net/downloads/releases/).
+A [Mise](https://mise.jdx.dev/) backend plugin for installing PHP on Windows using pre-built binaries from [windows.php.net](https://windows.php.net/downloads/releases/), plus Composer from [getcomposer.org](https://getcomposer.org/download/).
 
 ## Requirements
 
@@ -17,9 +17,9 @@ A [Mise](https://mise.jdx.dev/) backend plugin for installing PHP on Windows usi
 mise plugin install win-php https://github.com/ioweb-gr/mise-win-php.git
 ```
 
-## Usage
+## Usage: PHP
 
-The tool name is `php`; the backend prefix is `win-php`. All commands use the `win-php:php@version` format.
+The PHP tool name is `php`; the backend prefix is `win-php`. PHP commands use the `win-php:php@version` format.
 
 ### List available versions
 
@@ -58,6 +58,48 @@ Then just run `php` as usual:
 ```bash
 php -v
 php artisan ...
+composer install
+```
+
+## Usage: Composer
+
+Composer is available as a separate tool named `composer`, so projects can pin PHP and Composer independently.
+
+### List Composer versions
+
+```bash
+mise ls-remote win-php:composer
+```
+
+### Install Composer
+
+```bash
+mise use win-php:composer@2
+```
+
+Use a major line when you want the latest Composer 1.x or 2.x release:
+
+```bash
+mise use win-php:composer@1
+mise use win-php:composer@2
+
+# Equivalent explicit aliases handled by the plugin:
+mise use win-php:composer@1.x
+mise use win-php:composer@2.x
+```
+
+Use an exact version when you need fully reproducible installs:
+
+```bash
+mise use win-php:composer@2.9.8
+```
+
+### Use PHP and Composer together
+
+```bash
+mise use win-php:php@8.3 win-php:composer@2
+php -v
+composer --version
 composer install
 ```
 
@@ -133,18 +175,25 @@ For each PHP version the plugin:
 
 > xdebug and pcov downloads are non-fatal. If either fails (e.g. no build available for a given PHP version), the PHP installation still completes and a warning is printed.
 
+For each Composer version the plugin:
+
+1. Downloads `composer.phar` from `getcomposer.org`.
+2. Writes a Windows `composer.cmd` launcher next to the PHAR.
+3. Returns the install directory on `PATH` so mise can create the `composer` shim.
+
 ## How it works
 
 | File | Purpose |
 |------|---------|
 | `metadata.lua` | Declares the plugin as `win-php` |
-| `hooks/backend_list_versions.lua` | Scrapes `windows.php.net` for TS x64 ZIPs using Mise's built-in `http` module; returns a semver-sorted list |
-| `hooks/backend_install.lua` | Downloads + extracts PHP, xdebug, pcov; writes `php.ini` via Lua `io` |
-| `hooks/backend_exec_env.lua` | Returns `PATH = install_path` in `env_vars`; mise uses this to scan for executables and create shims (e.g. `php.cmd`), then strips it before applying env vars to the shell |
+| `hooks/backend_list_versions.lua` | Scrapes `windows.php.net` for TS x64 PHP ZIPs and `getcomposer.org` for Composer releases using Mise's built-in `http` module; returns semver-sorted lists |
+| `hooks/backend_install.lua` | Downloads + extracts PHP, xdebug, pcov; writes `php.ini` via Lua `io`; downloads `composer.phar` and writes `composer.cmd` |
+| `hooks/backend_exec_env.lua` | Returns `PATH = install_path` in `env_vars`; mise uses this to scan for executables and create shims (e.g. `php.cmd`, `composer.cmd`), then strips it before applying env vars to the shell |
 
 ## Troubleshooting
 
 * **Version not found** — verify the version exists as a TS x64 ZIP on `windows.php.net/downloads/releases/`. Use `mise ls-remote win-php:php` to see what is available.
+* **Composer version not found** — verify the version exists on `getcomposer.org/download/`. Use `mise ls-remote win-php:composer` to see what is available.
 * **Install fails on Linux/macOS** — listing remote versions works on any OS, but `mise install` will error because the PHP binaries are Windows-only.
 * **xdebug/pcov not installed** — run with `mise --debug install win-php:php@X.Y` to see which step failed. You can install them manually by downloading the DLL into the `ext/` subdirectory of the PHP install path and adding the appropriate `php.ini` lines.
 * **php.ini not created** — `php.ini-development` is always present in the install directory; copy it to `php.ini` manually and edit as needed.
