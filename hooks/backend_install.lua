@@ -230,80 +230,65 @@ function PLUGIN:BackendInstall(ctx)
     local ini_dev = file.join_path(install_path, "php.ini-development")
     local ini = file.join_path(install_path, "php.ini")
 
-    if file.exists(ini_dev) and not file.exists(ini) then
-        -- Extensions required/recommended for Magento 2.
-        -- gd2 = PHP 7.x name; gd = PHP 8.x name.  Both listed; the
-        -- pattern silently skips whichever name is absent from the template.
-        local extensions = {
-            "bcmath", "curl", "exif", "fileinfo",
-            "gd", "gd2", "gettext", "iconv", "intl",
-            "mbstring", "mysqli", "openssl", "pdo_mysql",
-            "soap", "sockets", "sodium", "xsl", "zip",
-        }
+    -- Extensions required/recommended for Magento 2.
+    -- gd2 = PHP 7.x name; gd = PHP 8.x name. Both listed; the pattern
+    -- silently skips whichever name is absent from the template.
+    local extensions = {
+        "bcmath", "curl", "exif", "fileinfo",
+        "gd", "gd2", "gettext", "iconv", "intl",
+        "mbstring", "mysqli", "openssl", "pdo_mysql",
+        "soap", "sockets", "sodium", "xsl", "zip",
+    }
 
-        local f_in = io.open(ini_dev, "r")
-        if not f_in then
-            print("Warning: could not open " .. ini_dev)
+    local ini_source = file.exists(ini) and ini or ini_dev
+    local f_in = io.open(ini_source, "r")
+    if not f_in then
+        print("Warning: could not open " .. ini_source)
+    else
+        local content = f_in:read("*a")
+        f_in:close()
+
+        -- Prepend \n so the very first line is reachable with the \n anchor.
+        local text = "\n" .. content
+
+        -- ;extension=name -> extension=name. The non-word suffix keeps gd from
+        -- matching gd2, socket from matching sockets, etc.
+        for _, ext in ipairs(extensions) do
+            text = text:gsub("\n%s*;%s*(extension%s*=%s*" .. ext .. "[^%a%d_][^\n]*)", "\n%1")
+        end
+
+        -- ;zend_extension=opcache and ;zend_extension=php_opcache
+        text = text:gsub("\n%s*;%s*(zend_extension%s*=%s*opcache[^\n]*)", "\n%1")
+        text = text:gsub("\n%s*;%s*(zend_extension%s*=%s*php_opcache[^\n]*)", "\n%1")
+
+        -- ;extension_dir = "..." (both the "./" and "ext" variants)
+        text = text:gsub("\n%s*;%s*(extension_dir[^\n]*)", "\n%1")
+
+        text = text:sub(2)
+
+        -- Full path used for zend_extension so PHP finds the DLL regardless of
+        -- how extension_dir is resolved at runtime.
+        if xdebug_dll_path and not text:match("zend_extension%s*=%s*[^%r\n]*php_xdebug%.dll") then
+            text = text .. "\n[xdebug]\n"
+            text = text .. "zend_extension=" .. xdebug_dll_path .. "\n"
+            text = text .. "xdebug.mode=debug,coverage\n"
+            text = text .. "xdebug.start_with_request=trigger\n"
+            text = text .. "xdebug.client_host=127.0.0.1\n"
+            text = text .. "xdebug.client_port=9003\n"
+        end
+
+        if pcov_installed and not text:match("extension%s*=%s*php_pcov%.dll") then
+            text = text .. "\n[pcov]\n"
+            text = text .. "extension=php_pcov.dll\n"
+        end
+
+        local f_out = io.open(ini, "w")
+        if not f_out then
+            print("Warning: could not write " .. ini)
         else
-            local content = f_in:read("*a")
-            f_in:close()
-
-            -- Uncomment matching lines.
-            -- Prepend \n so the very first line is reachable with the \n; anchor.
-            local text = "\n" .. content
-
-            -- ;extension=name  →  extension=name
-            -- [^%a%d_] after the name ensures "gd" never matches "gd2",
-            -- "socket" never matches "sockets", etc.  It also matches the
-            -- trailing \n, so end-of-line lines are handled in one pass.
-            for _, ext in ipairs(extensions) do
-                text = text:gsub("\n;(extension=" .. ext .. "[^%a%d_][^\n]*)", "\n%1")
-            end
-
-            -- ;zend_extension=opcache  and  ;zend_extension=php_opcache
-            text = text:gsub("\n;(zend_extension=opcache[^\n]*)", "\n%1")
-            text = text:gsub("\n;(zend_extension=php_opcache[^\n]*)", "\n%1")
-
-            -- ;extension_dir = "..."  (both the "./" and "ext" variants)
-            text = text:gsub("\n;(extension_dir[^\n]*)", "\n%1")
-
-            -- Remove the prepended \n
-            text = text:sub(2)
-
-            local f_out = io.open(ini, "w")
-            if not f_out then
-                print("Warning: could not write " .. ini)
-            else
-                f_out:write(text)
-                f_out:close()
-                print("Created php.ini with extensions enabled")
-
-                -- Append xdebug section.
-                -- Full path used for zend_extension so PHP finds the DLL
-                -- regardless of how extension_dir is resolved at runtime.
-                if xdebug_dll_path then
-                    local f_xd = io.open(ini, "a")
-                    if f_xd then
-                        f_xd:write("\n[xdebug]\n")
-                        f_xd:write("zend_extension=" .. xdebug_dll_path .. "\n")
-                        f_xd:write("xdebug.mode=debug,coverage\n")
-                        f_xd:write("xdebug.start_with_request=trigger\n")
-                        f_xd:write("xdebug.client_host=127.0.0.1\n")
-                        f_xd:write("xdebug.client_port=9003\n")
-                        f_xd:close()
-                    end
-                end
-
-                -- Append pcov section.
-                if pcov_installed then
-                    local f_pcov = io.open(ini, "a")
-                    if f_pcov then
-                        f_pcov:write("\n[pcov]\n")
-                        f_pcov:write("extension=php_pcov.dll\n")
-                        f_pcov:close()
-                    end
-                end
-            end
+            f_out:write(text)
+            f_out:close()
+            print("Ensured php.ini with Magento extensions enabled")
         end
     end
 
