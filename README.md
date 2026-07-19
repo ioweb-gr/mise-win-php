@@ -155,7 +155,7 @@ For each PHP version the plugin:
 5. Creates or repairs **`php.ini`** from `php.ini-development` with the following pre-configured. Re-running the install is idempotent: existing `php.ini` files are updated to keep Magento-required extensions enabled without duplicating xdebug or pcov entries.
 
    **Extensions enabled** (uncommented from the template):
-   `bcmath`, `curl`, `exif`, `fileinfo`, `gd`/`gd2`, `gettext`, `iconv`, `intl`, `mbstring`, `mysqli`, `openssl`, `pdo_mysql`, `soap`, `sockets`, `sodium`, `xsl`, `zip`, `opcache`
+   `bcmath`, `curl`, `exif`, `fileinfo`, `gd`/`gd2`, `gettext`, `iconv`, `intl`, `mbstring`, `mysqli`, `openssl`, `pdo_mysql`, `pdo_sqlite`, `soap`, `sockets`, `sodium`, `xsl`, `zip`, `opcache`
 
    **xdebug section appended:**
    ```ini

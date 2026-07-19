@@ -236,7 +236,7 @@ function PLUGIN:BackendInstall(ctx)
     local extensions = {
         "bcmath", "curl", "exif", "fileinfo",
         "gd", "gd2", "gettext", "iconv", "intl",
-        "mbstring", "mysqli", "openssl", "pdo_mysql",
+        "mbstring", "mysqli", "openssl", "pdo_mysql", "pdo_sqlite",
         "soap", "sockets", "sodium", "xsl", "zip",
     }
 

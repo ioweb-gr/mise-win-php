@@ -1,6 +1,6 @@
 PLUGIN = {
     name = "win-php",
-    version = "1.3.1",
+    version = "1.3.2",
     description = "Mise backend plugin for installing PHP on Windows using pre-built binaries",
     author = "ioweb-gr",
     homepage = "https://github.com/ioweb-gr/mise-win-php",
