@@ -239,6 +239,18 @@ function PLUGIN:BackendInstall(ctx)
         "mbstring", "mysqli", "openssl", "pdo_mysql", "pdo_sqlite",
         "soap", "sockets", "sodium", "xsl", "zip",
     }
+    local managed_extensions = {}
+    for _, ext in ipairs(extensions) do
+        managed_extensions[ext] = true
+    end
+
+    local function normalize_extension_name(name)
+        local normalized = name:lower()
+        if normalized:sub(1, 4) == "php_" then
+            normalized = normalized:sub(5)
+        end
+        return normalized
+    end
 
     local ini_source = file.exists(ini) and ini or ini_dev
     local f_in = io.open(ini_source, "r")
@@ -251,15 +263,40 @@ function PLUGIN:BackendInstall(ctx)
         -- Prepend \n so the very first line is reachable with the \n anchor.
         local text = "\n" .. content
 
-        -- ;extension=name -> extension=name. The non-word suffix keeps gd from
-        -- matching gd2, socket from matching sockets, etc.
+        -- ;extension=name -> extension=name. Require no whitespace after the
+        -- semicolon so the indented documentation example earlier in
+        -- php.ini-development is not treated as a real extension directive.
+        -- The non-word suffix keeps gd from matching gd2, socket from matching
+        -- sockets, etc.
         for _, ext in ipairs(extensions) do
-            text = text:gsub("\n%s*;%s*(extension%s*=%s*" .. ext .. "[^%a%d_][^\n]*)", "\n%1")
+            text = text:gsub("\n[ \t]*;(extension%s*=%s*" .. ext .. "[^%a%d_][^\n]*)", "\n%1")
         end
 
+        -- Repair installs made by older plugin versions, which could leave
+        -- both the documentation example and the real extension row active.
+        -- Keep the final managed row so the canonical extension-list entry wins.
+        local active_counts = {}
+        text:gsub("\n[ \t]*(extension%s*=%s*([%w_]+)[^\r\n]*)", function(_, name)
+            local normalized = normalize_extension_name(name)
+            if managed_extensions[normalized] then
+                active_counts[normalized] = (active_counts[normalized] or 0) + 1
+            end
+        end)
+        local active_seen = {}
+        text = text:gsub("\n([ \t]*)(extension%s*=%s*([%w_]+)[^\r\n]*)", function(prefix, directive, name)
+            local normalized = normalize_extension_name(name)
+            if managed_extensions[normalized] then
+                active_seen[normalized] = (active_seen[normalized] or 0) + 1
+                if active_seen[normalized] < active_counts[normalized] then
+                    return "\n"
+                end
+            end
+            return "\n" .. prefix .. directive
+        end)
+
         -- ;zend_extension=opcache and ;zend_extension=php_opcache
-        text = text:gsub("\n%s*;%s*(zend_extension%s*=%s*opcache[^\n]*)", "\n%1")
-        text = text:gsub("\n%s*;%s*(zend_extension%s*=%s*php_opcache[^\n]*)", "\n%1")
+        text = text:gsub("\n[ \t]*;(zend_extension%s*=%s*opcache[^\n]*)", "\n%1")
+        text = text:gsub("\n[ \t]*;(zend_extension%s*=%s*php_opcache[^\n]*)", "\n%1")
 
         -- ;extension_dir = "..." (both the "./" and "ext" variants)
         text = text:gsub("\n%s*;%s*(extension_dir[^\n]*)", "\n%1")

@@ -152,7 +152,7 @@ For each PHP version the plugin:
 2. Extracts it into Mise's install directory.
 3. Downloads the latest **xdebug** ZIP for the matching PHP minor version and VC runtime from the [PECL Windows build server](https://windows.php.net/downloads/pecl/releases/xdebug/) and extracts the DLL into `ext/`.
 4. Downloads the latest **pcov** DLL from the [PECL Windows build server](https://windows.php.net/downloads/pecl/releases/pcov/) and extracts it into `ext/`.
-5. Creates or repairs **`php.ini`** from `php.ini-development` with the following pre-configured. Re-running the install is idempotent: existing `php.ini` files are updated to keep Magento-required extensions enabled without duplicating xdebug or pcov entries.
+5. Creates or repairs **`php.ini`** from `php.ini-development` with the following pre-configured. Re-running the install is idempotent: existing `php.ini` files are updated to keep Magento-required extensions enabled without duplicating managed extensions, xdebug, or pcov entries.
 
    **Extensions enabled** (uncommented from the template):
    `bcmath`, `curl`, `exif`, `fileinfo`, `gd`/`gd2`, `gettext`, `iconv`, `intl`, `mbstring`, `mysqli`, `openssl`, `pdo_mysql`, `pdo_sqlite`, `soap`, `sockets`, `sodium`, `xsl`, `zip`, `opcache`
